@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the SleeperFFL waiver watcher every 20 minutes
+
+[Timer]
+# Waivers clear overnight and drops cluster around game time, so a steady
+# cadence beats trying to be clever about the schedule.
+OnCalendar=*:0/20
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target
