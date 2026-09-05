@@ -8,7 +8,10 @@ Type=oneshot
 User=apache
 Group=apache
 WorkingDirectory=/var/www/html/SleeperFFL
+# Holds SLEEPERFFL_NTFY_TOKEN. Kept out of the repo; see deploy/README.md.
+EnvironmentFile=/etc/sleeperffl/env
 Environment=SLEEPERFFL_USERNAME=dbdev
+Environment=SLEEPERFFL_NTFY_SERVER=https://ntfy.cla.ms
 Environment=SLEEPERFFL_NTFY_TOPIC=dbdev-ffl
 Environment=SLEEPERFFL_CACHE_DIR=/var/www/html/SleeperFFL/.cache
 Environment=SLEEPERFFL_STATE_DIR=/var/www/html/SleeperFFL/.state

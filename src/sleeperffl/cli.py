@@ -457,7 +457,9 @@ def watch(
             console.print("[dim]No wire movement worth flagging.[/]")
             return
 
-        notifier = Notifier(config.ntfy_server, config.ntfy_topic, enabled=notify)
+        notifier = Notifier(
+            config.ntfy_server, config.ntfy_topic, token=config.ntfy_token, enabled=notify
+        )
         for alert in alerts:
             console.print(f"[bold]{alert.headline}[/]\n  {alert.detail}")
             if notify:

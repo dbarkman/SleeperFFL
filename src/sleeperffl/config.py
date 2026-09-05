@@ -33,6 +33,7 @@ class Config:
     state_dir: Path
     ntfy_topic: str
     ntfy_server: str
+    ntfy_token: str | None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -43,5 +44,6 @@ class Config:
             cache_dir=_cache_root(),
             state_dir=_state_root(),
             ntfy_topic=os.environ.get("SLEEPERFFL_NTFY_TOPIC", "dbdev-ffl"),
-            ntfy_server=os.environ.get("SLEEPERFFL_NTFY_SERVER", "https://ntfy.sh"),
+            ntfy_server=os.environ.get("SLEEPERFFL_NTFY_SERVER", "https://ntfy.cla.ms"),
+            ntfy_token=os.environ.get("SLEEPERFFL_NTFY_TOKEN") or None,
         )
