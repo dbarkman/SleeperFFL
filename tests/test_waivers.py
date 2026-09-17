@@ -9,6 +9,7 @@ from sleeperffl.waivers import (
     rank_free_agents,
     update_state,
     waiver_advice,
+    weakest_rostered_by_position,
 )
 
 
@@ -91,6 +92,8 @@ def test_injury_to_a_starter_surfaces_the_backup(league, pool):
 
 
 def test_trending_surge_flags_an_available_player(league, pool):
+    # Give "my" roster a weak back so rb5 is a genuine upgrade.
+    league.rosters[0]["players"] = ["rb0", "rb30", "wr0"]
     state = WatcherState()
     update_state(state, league, pool, [])
     trending = [{"player_id": "rb5", "count": 91234}]
@@ -173,3 +176,43 @@ def test_waiver_advice_switches_to_bids_in_a_faab_league(league):
     assert league.uses_faab
     advice = waiver_advice(league, value=50.0, rank_among_fa=1)
     assert "$" in advice
+
+
+def test_trending_kickers_and_defenses_are_never_flagged(league, pool):
+    """Every league streams them; the whole position is worth a few points."""
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    trending = [{"player_id": "k0", "count": 80000}, {"player_id": "def0", "count": 70000}]
+    assert detect_alerts(league, pool, state, trending_add=trending, min_vor=-999) == []
+
+
+def test_dropped_kicker_is_still_reported(league, pool):
+    """The skip only applies to national hype, not to real league movement."""
+    league.rosters[1]["players"] = ["k0"]
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    league.rosters[1]["players"] = []
+    alerts = detect_alerts(league, pool, state, trending_add=[], min_vor=-999)
+    assert [a.player.player_id for a in alerts] == ["k0"]
+
+
+def test_trending_player_worse_than_my_weakest_is_not_flagged(league, pool):
+    # My only RB projects 300; rb5 at 270 would not improve the roster.
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    alerts = detect_alerts(league, pool, state, trending_add=[{"player_id": "rb5", "count": 50000}])
+    assert alerts == []
+
+
+def test_trending_at_a_position_i_do_not_roster_is_flagged(league, pool):
+    # No quarterback on my roster, so there is no floor to beat.
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    alerts = detect_alerts(league, pool, state, trending_add=[{"player_id": "qb1", "count": 40000}])
+    assert [a.player.player_id for a in alerts] == ["qb1"]
+
+
+def test_weakest_rostered_by_position(league, pool):
+    league.rosters[0]["players"] = ["rb0", "rb30", "wr0", "not-in-pool"]
+    weakest = weakest_rostered_by_position(league, pool)
+    assert weakest == {"RB": pool["rb30"].proj_season, "WR": pool["wr0"].proj_season}

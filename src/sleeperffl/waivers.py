@@ -25,6 +25,12 @@ OUT_STATUSES = frozenset({"Out", "IR", "PUP", "Doubtful", "Sus", "NA", "DNR"})
 DEFAULT_MIN_VOR = -20.0
 DEFAULT_TRENDING_RANK = 50
 
+# National add surges at these positions are near-universal (every league is
+# streaming them) and the whole position is worth a few points a season, so a
+# trending kicker or defense is never worth a claim. Drops and injury openings
+# at these positions are still reported.
+TRENDING_SKIP_POSITIONS = frozenset({"K", "DEF"})
+
 
 @dataclass
 class WatcherState:
@@ -141,6 +147,20 @@ def waiver_advice(league: League, value: float, rank_among_fa: int) -> str:
     )
 
 
+def weakest_rostered_by_position(league: League, pool: Mapping[str, Player]) -> dict[str, float]:
+    """Your lowest-projected player at each position you roster."""
+    roster = league.my_roster or {}
+    weakest: dict[str, float] = {}
+    for player_id in roster.get("players") or []:
+        player = pool.get(player_id)
+        if player is None:
+            continue
+        current = weakest.get(player.position)
+        if current is None or player.proj_season < current:
+            weakest[player.position] = player.proj_season
+    return weakest
+
+
 def detect_alerts(
     league: League,
     pool: Mapping[str, Player],
@@ -216,12 +236,20 @@ def detect_alerts(
             )
 
     # 3. Leaguewide add surges on someone still available here.
+    weakest = weakest_rostered_by_position(league, pool)
     for index, row in enumerate(trending_add):
         if index >= trending_rank:
             break
         player_id = row.get("player_id")
         player = available.get(player_id)
         if player is None or state.recently_alerted(player_id, cooldown):
+            continue
+        if player.position in TRENDING_SKIP_POSITIONS:
+            continue
+        # Hype alone is not a reason to act: only flag someone who would be an
+        # upgrade on the weakest player you already roster at his position.
+        floor = weakest.get(player.position)
+        if floor is not None and player.proj_season <= floor:
             continue
         value = vor(player, levels)
         if value < min_vor:
