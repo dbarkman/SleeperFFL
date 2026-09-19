@@ -216,3 +216,112 @@ def test_weakest_rostered_by_position(league, pool):
     league.rosters[0]["players"] = ["rb0", "rb30", "wr0", "not-in-pool"]
     weakest = weakest_rostered_by_position(league, pool)
     assert weakest == {"RB": pool["rb30"].proj_season, "WR": pool["wr0"].proj_season}
+
+
+def _my_injuries(alerts):
+    return [a for a in alerts if a.kind == "my_injury"]
+
+
+def _setup_my_team(league):
+    league.rosters[0]["players"] = ["rb0", "rb2", "rb3", "wr0"]
+    league.rosters[0]["starters"] = ["rb0", "rb2", "wr0"]
+
+
+def test_my_starter_going_out_is_high_priority_and_names_a_sub(league, pool):
+    _setup_my_team(league)
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb0"].injury_status = "Out"
+    alerts = _my_injuries(detect_alerts(league, pool, state, trending_add=[]))
+
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert.player.player_id == "rb0"
+    assert alert.priority == "high"
+    assert alert.headline.startswith("OUT:")
+    assert "starter" in alert.detail
+    # rb3 is the only RB on the bench.
+    assert "Swap in RB 3" in alert.detail
+
+
+def test_my_bench_player_questionable_is_default_priority(league, pool):
+    _setup_my_team(league)
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb3"].injury_status = "Questionable"
+    alerts = _my_injuries(detect_alerts(league, pool, state, trending_add=[]))
+
+    assert [a.player.player_id for a in alerts] == ["rb3"]
+    assert alerts[0].priority == "default"
+    assert "bench player" in alerts[0].detail
+    assert "Swap in" not in alerts[0].detail
+
+
+def test_escalation_mentions_previous_status(league, pool):
+    _setup_my_team(league)
+    pool["rb0"].injury_status = "Questionable"
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb0"].injury_status = "Doubtful"
+    alerts = _my_injuries(detect_alerts(league, pool, state, trending_add=[]))
+    assert "(was Questionable)" in alerts[0].detail
+    assert alerts[0].priority == "high"
+
+
+def test_cleared_player_is_reported(league, pool):
+    _setup_my_team(league)
+    pool["rb0"].injury_status = "Out"
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb0"].injury_status = None
+    alerts = _my_injuries(detect_alerts(league, pool, state, trending_add=[]))
+    assert alerts[0].headline.startswith("CLEARED:")
+    assert "was Out" in alerts[0].detail
+
+
+def test_unchanged_status_does_not_realert(league, pool):
+    _setup_my_team(league)
+    pool["rb0"].injury_status = "Out"
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    assert _my_injuries(detect_alerts(league, pool, state, trending_add=[])) == []
+
+
+def test_other_teams_injuries_are_not_my_injury_alerts(league, pool):
+    _setup_my_team(league)
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb1"].injury_status = "Out"  # rb1 belongs to the rival
+    assert _my_injuries(detect_alerts(league, pool, state, trending_add=[])) == []
+
+
+def test_starter_out_with_no_healthy_sub_points_to_the_wire(league, pool):
+    league.rosters[0]["players"] = ["rb0", "wr0"]
+    league.rosters[0]["starters"] = ["rb0", "wr0"]
+    state = WatcherState()
+    update_state(state, league, pool, [])
+
+    pool["rb0"].injury_status = "IR"
+    alerts = _my_injuries(detect_alerts(league, pool, state, trending_add=[]))
+    assert "check the wire" in alerts[0].detail
+
+
+def test_first_run_never_sends_injury_alerts(league, pool):
+    _setup_my_team(league)
+    pool["rb0"].injury_status = "Out"
+    assert detect_alerts(league, pool, WatcherState(), trending_add=[]) == []
+
+
+def test_my_injury_alerts_sort_first(league, pool):
+    _setup_my_team(league)
+    state = WatcherState()
+    update_state(state, league, pool, [])
+    league.rosters[1]["players"] = []          # triggers DROPPED alerts too
+    pool["rb0"].injury_status = "Out"
+    alerts = detect_alerts(league, pool, state, trending_add=[])
+    assert alerts[0].kind == "my_injury"

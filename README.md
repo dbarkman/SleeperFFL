@@ -69,8 +69,11 @@ Sleeper has no free-agents endpoint, so the pool is derived: every player with a
 projection, minus everyone rostered across all teams. Running that on a schedule
 and diffing against the previous run turns it into alerts.
 
-Three triggers:
+Four triggers:
 
+* **Your player** — anyone on your roster whose injury designation changes,
+  including being cleared. When a starter is Out, Doubtful or on IR, the alert
+  names the best healthy bench player at his position to swap in.
 * **Dropped** — a player who was rostered last run and is now free, above a
   value threshold.
 * **Opening** — a free agent behind a rostered player who just went Out or IR.

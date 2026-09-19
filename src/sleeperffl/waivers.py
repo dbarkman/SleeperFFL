@@ -87,7 +87,9 @@ class Alert:
     priority: str = "default"
 
     def sort_key(self) -> tuple[int, float]:
-        rank = {"dropped": 0, "injury_opening": 1, "trending": 2}.get(self.kind, 3)
+        rank = {"my_injury": 0, "dropped": 1, "injury_opening": 2, "trending": 3}.get(
+            self.kind, 4
+        )
         return (rank, -self.value)
 
 
@@ -161,6 +163,74 @@ def weakest_rostered_by_position(league: League, pool: Mapping[str, Player]) -> 
     return weakest
 
 
+def _best_bench_sub(
+    player: Player, roster: Iterable[Player], starters: set[str]
+) -> Player | None:
+    """Highest-projected healthy bench player at the same position."""
+    candidates = [
+        p
+        for p in roster
+        if p.player_id not in starters
+        and p.player_id != player.player_id
+        and p.position == player.position
+        and p.injury_status not in OUT_STATUSES
+    ]
+    return max(candidates, key=lambda p: p.proj_season, default=None)
+
+
+def my_injury_alerts(
+    league: League, pool: Mapping[str, Player], state: WatcherState
+) -> list[Alert]:
+    """Any change in injury designation for a player on your own roster.
+
+    Covers getting hurt, getting worse, and getting cleared. For a starter who
+    is now unlikely to play, the alert names the bench player to swap in.
+    """
+    roster = league.my_roster or {}
+    starters = set(roster.get("starters") or [])
+    mine = [pool[pid] for pid in roster.get("players") or [] if pid in pool]
+
+    alerts: list[Alert] = []
+    for player in mine:
+        before = state.injuries.get(player.player_id) or None
+        now = player.injury_status or None
+        if before == now:
+            continue
+
+        role = "starter" if player.player_id in starters else "bench player"
+        if now is None:
+            alerts.append(
+                Alert(
+                    kind="my_injury",
+                    player=player,
+                    value=0.0,
+                    headline=f"CLEARED: {player.label}",
+                    detail=f"Your {role} {player.name} no longer has an injury designation (was {before}).",
+                )
+            )
+            continue
+
+        was = f" (was {before})" if before else ""
+        detail = f"Your {role} {player.name} is now {now}{was}."
+        if player.player_id in starters and now in OUT_STATUSES:
+            sub = _best_bench_sub(player, mine, starters)
+            if sub:
+                detail += f" Swap in {sub.name} ({sub.proj_season:.0f} proj) before his game locks."
+            else:
+                detail += f" No healthy {player.position} on your bench — check the wire."
+        alerts.append(
+            Alert(
+                kind="my_injury",
+                player=player,
+                value=0.0,
+                headline=f"{now.upper()}: {player.label} — your player",
+                detail=detail,
+                priority="high" if now in OUT_STATUSES else "default",
+            )
+        )
+    return alerts
+
+
 def detect_alerts(
     league: League,
     pool: Mapping[str, Player],
@@ -204,12 +274,22 @@ def detect_alerts(
                 )
             )
 
-    # 2. Backups promoted by an injury to the starter ahead of them.
-    newly_out = {
-        player_id: status
-        for player_id, status in _current_injuries(pool).items()
-        if status in OUT_STATUSES and state.injuries.get(player_id) not in OUT_STATUSES
-    }
+    # 2. Your own players changing injury status.
+    if state.initialised:
+        alerts.extend(my_injury_alerts(league, pool, state))
+
+    # 3. Backups promoted by an injury to the starter ahead of them.
+    # Needs a previous run to compare against, or every existing injury would
+    # look new.
+    newly_out = (
+        {
+            player_id: status
+            for player_id, status in _current_injuries(pool).items()
+            if status in OUT_STATUSES and state.injuries.get(player_id) not in OUT_STATUSES
+        }
+        if state.initialised
+        else {}
+    )
     for hurt_id in newly_out:
         hurt = pool.get(hurt_id)
         if hurt is None or hurt_id not in owned_now:
@@ -235,7 +315,7 @@ def detect_alerts(
                 )
             )
 
-    # 3. Leaguewide add surges on someone still available here.
+    # 4. Leaguewide add surges on someone still available here.
     weakest = weakest_rostered_by_position(league, pool)
     for index, row in enumerate(trending_add):
         if index >= trending_rank:
