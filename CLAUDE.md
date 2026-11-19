@@ -5,7 +5,7 @@ league, on Sleeper's read-only HTTP API.
 
 ## The league
 
-**Deshaun Watson Massage Parlor** — 8 teams, snake draft, 15 rounds.
+8 teams, snake draft, 15 rounds.
 Full PPR (1.0/rec, 4pt pass TD, no bonuses). Starters are
 QB/RB/RB/WR/WR/TE/FLEX/FLEX/K/DEF plus 5 bench. Rolling waiver priority (not
 FAAB), 2-day clear. Playoffs start week 15. David is commissioner, roster 1.
